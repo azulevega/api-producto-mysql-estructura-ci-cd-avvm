@@ -3,7 +3,7 @@ name: Deploy to jquiroz.net
 on:
   push:
     branches:
-      - main   # o la rama que quieres usar
+      - main
 
 jobs:
   deploy:
@@ -13,6 +13,7 @@ jobs:
       SSH_USER: ${{ secrets.SSH_USER }}
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SITE_DIR: ${{ secrets.SITE_DIR }}
+      PROJECT_DIR: ${{ secrets.PROJECT_DIR }}
       GIT_REPO_URL: ${{ secrets.GIT_REPO_URL }}
       BRANCH: main
 
@@ -33,23 +34,29 @@ jobs:
           ssh "${SSH_USER}@${SSH_HOST}" "bash -s" << EOF
             set -e
 
-            echo "=== Entrando a /home/pweb/sites ==="
-            cd /home/pweb/sites
+            BASE_PATH="/home/${SSH_USER}/sites/${SITE_DIR}"
+            PROJECT_PATH="\${BASE_PATH}/${PROJECT_DIR}"
 
-            echo "=== Creando carpeta si no existe: ${SITE_DIR} ==="
-            mkdir -p "${SITE_DIR}"
-            cd "${SITE_DIR}"
+            echo "=== Creando carpeta base si no existe: \$BASE_PATH ==="
+            mkdir -p "\$BASE_PATH"
 
-            echo "=== Revisando si existe .git ==="
+            echo "=== Entrando a carpeta del proyecto: \$PROJECT_PATH ==="
+            mkdir -p "\$PROJECT_PATH"
+            cd "\$PROJECT_PATH"
+
             if [ ! -d .git ]; then
-              echo ">>> Primera vez: clonando ${GIT_REPO_URL}"
-              git clone "${GIT_REPO_URL}" .
+              if [ -z "\$(ls -A .)" ]; then
+                echo ">>> Primera vez: clonando ${GIT_REPO_URL}"
+                git clone "${GIT_REPO_URL}" .
+              else
+                echo "ERROR: La carpeta \$PROJECT_PATH no está vacía y no es un repo git."
+                exit 1
+              fi
             else
-              echo ">>> Repositorio ya existe, haciendo fetch..."
+              echo ">>> Repositorio ya existente, haciendo fetch..."
               git fetch --all
             fi
 
-            echo "=== Comparando commits local vs remoto ==="
             LOCAL=\$(git rev-parse HEAD || echo "")
             REMOTE=\$(git rev-parse origin/${BRANCH} || echo "")
 
@@ -57,19 +64,18 @@ jobs:
               echo ">>> Hay nueva versión, haciendo git pull..."
               git pull origin "${BRANCH}"
 
-              echo ">>> Verificando docker-compose..."
               if [ -f docker-compose.yml ] || [ -f docker-compose.yaml ]; then
                 echo ">>> Reiniciando contenedores..."
                 docker compose down
                 docker compose pull || true
                 docker compose up -d --build
-                echo ">>> Despliegue completado."
               else
                 echo ">>> No hay docker-compose, solo se actualizaron archivos."
               fi
             else
-              echo ">>> El servidor ya está actualizado."
+              echo ">>> Todo está actualizado."
             fi
 
-            echo "=== Fin del despliegue ==="
+            echo "=== Despliegue completo ==="
           EOF
+
