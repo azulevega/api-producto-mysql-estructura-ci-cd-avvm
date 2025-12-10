@@ -29,7 +29,7 @@ services:
       MYSQL_PASSWORD: web123456
       MYSQL_DATABASE: web-dbase
     ports:
-      - "8000:8000"
+      - "3028:8000"
 
 volumes:
   db_data:
